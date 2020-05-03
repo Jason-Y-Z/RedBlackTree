@@ -54,13 +54,12 @@ class Node(object):
     @property
     def only_child(self):
         if self.lch is None and self.rch is None:
+
+            # If it has no non-leaf child, return a leaf node.
             return Node(is_red=False, key=None, value=None, parent=self)
-        elif self.lch is not None and self.rch is not None:
+        if self.lch is not None and self.rch is not None:
             raise Exception('Current node has both children')
-        elif self.lch is not None:
-            return self.lch
-        else:
-            return self.rch
+        return self.lch if self.lch else self.rch
 
 
 class RedBlackTree(object):
@@ -69,6 +68,10 @@ class RedBlackTree(object):
     """
 
     def __init__(self, comp=lambda x, y: x < y):
+        """
+        Initialise a red black tree with given comparator.
+        :param comp: comparator to compare the keys of the nodes in the tree
+        """
         self.root = None
         self.comp = comp
 
@@ -77,45 +80,102 @@ class RedBlackTree(object):
             return ''
 
         # Initialise the search queue.
+        level = 0  # level of the current node
+        level_str = ''
         node_queue = deque()
-        level = 0
         node_queue.append((self.root, level))
         tree_str = ''
+
+        # Since we add None strings in place of empty nodes, we need this
+        # flag to keep track of whether next level has non-empty nodes.
         next_level_flag = True
+        EMPTY_NODE = Node(False, None, None)
 
         # BFS
         while len(node_queue) > 0:
             node, node_level = node_queue.popleft()
 
-            # Create a newline in the string.
+            # Create a newline in the string when reaching the next level.
             if node_level > level:
-                if not next_level_flag:
+                if not next_level_flag:  # no non-empty node on this level
                     break
-                tree_str += '\n'
+                tree_str += level_str + '\n'
                 level = node_level
+                level_str = ''
                 next_level_flag = False
 
             # Add the current node to the current layer.
-            tree_str += str(node)
+            level_str += str(node)
             if node.lch is None:
-                node_queue.append((Node(False, None, None), level + 1))
+                node_queue.append((EMPTY_NODE, level + 1))
             else:
                 next_level_flag = True
                 node_queue.append((node.lch, level + 1))
             if node.rch is None:
-                node_queue.append((Node(False, None, None), level + 1))
+                node_queue.append((EMPTY_NODE, level + 1))
             else:
                 next_level_flag = True
                 node_queue.append((node.rch, level + 1))
         return tree_str
 
+    def add(self, key, value):
+        """
+        Add a new node to the tree, with given key and value.
+        """
+        new_node = Node(is_red=True, key=key, value=value)
+        self._insert(new_node)
+
+    def remove(self, key):
+        """
+        Remove an existing node from the tree, with given key.
+        """
+        # Find the target node, which is the largest node smaller than or
+        # equal to the node to delete.
+        target_node = self._find(key)
+
+        # In the case where the target node found does not have the same key,
+        # copy the target node to cover the node to delete.
+        node = target_node
+        while node is not None and node.key != key:
+            node = node.parent
+        if node is None:  # the key can not be found in the tree
+            return
+        node.key, node.value = target_node.key, target_node.value  # copy over
+        self._delete(target_node)
+
+    def first(self):
+        """
+        Find the first node with 'smallest' key according to the given
+        comparator of the tree.
+        :return: key and value of the first node as a tuple, None if tree empty
+        """
+        if self.root is None:
+            return None
+        node = self.root
+        while node.lch is not None:
+            node = node.lch
+        return node.key, node.value
+
+    def pop(self):
+        """
+        Find the first node and remove it from the tree.
+        :return: key and value of the first node as a tuple, None if tree empty
+        """
+        first_node = self.first()
+        if first_node is None:
+            return None
+        self.remove(first_node[0])
+        return first_node
+
     def _replace_child_of_parent(self, node, new_child):
         """
-        Replace the current node in its relationship with its parent,
-        using a new child node.
+        Replace the current node with a new child node (in its relationship
+        with its parent).
         """
         parent = node.parent
         if parent:
+
+            # Replace the left/right child reference accordingly.
             if parent.lch and node.key == parent.lch.key:
                 parent.lch = new_child
             elif parent.rch and node.key == parent.rch.key:
@@ -123,49 +183,44 @@ class RedBlackTree(object):
             else:
                 raise Exception('Unrecognized Parent-Child Relationship')
         else:
+
+            # Parent is None means the current node is the root.
             self.root = new_child
         if new_child is not None:
+
+            # Update the new child's parent reference.
             new_child.parent = parent
 
-    def _replace_node_with_child(self, node, child=None):
-        """
-        Replace the current node with its only child or None.
-        """
-        if child:
-            self._replace_child_of_parent(node, child)
-        elif node.lch is None and node.rch is None:
-            self._replace_child_of_parent(node, None)
-        elif node.lch and node.rch:
-            raise Exception('Cannot replace node with both children')
-        else:
-            self._replace_child_of_parent(node, node.only_child)
-
     def _rotate_left(self, anchor):
+        """
+        Rotate the subtree, rooted at the anchor, leftwards.
+        """
         if anchor.rch is None:
-            raise Exception('Empty (leaf) node can not become internal')
+            raise Exception(
+                'Root of the left-rotating subtree has an empty right child')
         new_anchor = anchor.rch
         anchor.rch = new_anchor.lch
         new_anchor.lch = anchor
 
-        # Fix child references.
+        # Update the parent/child references.
         self._replace_child_of_parent(anchor, new_anchor)
-
-        # Fix the parent references.
         anchor.parent = new_anchor
         if anchor.rch:
             anchor.rch.parent = anchor
 
     def _rotate_right(self, anchor):
+        """
+        Rotate the subtree, rooted at the anchor, rightwards.
+        """
         if anchor.lch is None:
-            raise Exception('Empty (leaf) node can not become internal')
+            raise Exception(
+                'Root of the right-rotating subtree has an empty left child')
         new_anchor = anchor.lch
         anchor.lch = new_anchor.rch
         new_anchor.rch = anchor
 
-        # Fix child references.
+        # Update the parent/child references.
         self._replace_child_of_parent(anchor, new_anchor)
-
-        # Fix the parent references.
         anchor.parent = new_anchor
         if anchor.lch:
             anchor.lch.parent = anchor
@@ -185,19 +240,25 @@ class RedBlackTree(object):
             raise Exception('Unrecognized Parent-Child Relationship')
 
     def _find(self, key):
+        """
+        Find the largest node with key smaller than or equal to target key.
+        """
         node = self.root
         while node is not None:
             if self.comp(key, node.key):  # left branch
                 if node.lch is None:
                     return node
                 node = node.lch
-            else:  # right branch
+            else:                         # right branch
                 if node.rch is None:
                     return node
                 node = node.rch
         return node
 
     def _insert(self, new_node):
+        """
+        Insert a new node into the red black tree.
+        """
 
         # Construct a new tree if it is currently empty.
         if self.root is None:
@@ -205,7 +266,7 @@ class RedBlackTree(object):
             self.root = new_node
             return
 
-        # Insert the new node according to the rule of a BST.
+        # Insert the new node according to the rule of a Binary Search Tree.
         node = self._find(new_node.key)
         if self.comp(new_node.key, node.key) and node.lch is None:
             node.lch = new_node
@@ -214,25 +275,34 @@ class RedBlackTree(object):
         else:
             raise Exception('_find returns a non-leaf position for insertion')
         new_node.parent = node
+
+        # Balance the tree after the insertion.
         self._balance_insert(new_node)
 
     def _balance_insert(self, new_node):
+        """
+        Balance the tree after insertion.
+        """
 
         # The current node is root.
         if new_node.parent is None:
-            new_node.is_red = False
+            new_node.is_red = False  # root must be black
             self.root = new_node
             return
 
-        # The parent node is black.
+        # The parent node is black, adding a red child is fine.
         if not new_node.parent.is_red:
             return
 
         # The parent and the aunt are both red.
         if new_node.aunt and new_node.aunt.is_red:
+
+            # Swap colours of aunt and parent with grandparent.
             new_node.parent.is_red = False
             new_node.aunt.is_red = False
             new_node.grandparent.is_red = True
+
+            # Recurse on grandparent.
             self._balance_insert(new_node.grandparent)
             return
 
@@ -247,37 +317,36 @@ class RedBlackTree(object):
             self._rotate_right(new_node.parent)
             new_node = new_node.rch
 
-        # Rotate the node upwards.
+        # Rotate the parent node upwards.
         grandparent = new_node.grandparent
-        if new_node is new_node.parent.lch:
-            self._rotate_right(grandparent)
-        else:
-            self._rotate_left(grandparent)
+        self._rotate_up(new_node.parent)
+
+        # The parent has now become parent of grandparent and current node.
+        # Swap its color with the grandparent node.
         new_node.parent.is_red = False
         grandparent.is_red = True
 
-    def add(self, key, value):
-        new_node = Node(is_red=True, key=key, value=value)
-        self._insert(new_node)
-
     def _delete(self, target_node):
+        """
+        Delete a node from the tree.
+        """
 
-        # Step 1: replace the target node with its only child
+        # Replace the target node with its only child.
         child = target_node.only_child
-        self._replace_node_with_child(target_node, child)
+        self._replace_child_of_parent(target_node, child)
 
-        # Step 2: for black target node, we check its child
+        # For black target node, we check its child.
         if not target_node.is_red:
 
-            # Step 2.1: for red child, we flip its colour
+            # For red child, we flip its colour.
             if child.is_red:
                 child.is_red = False
 
-            # Step 2.2: for black child, we balance the tree further
+            # For black child, we balance the tree further.
             else:
                 self._balance_delete(child)
 
-        # Step 3: Remove the leaf node from our representation.
+        # Remove the empty (leaf) node from our representation.
         if child.key is None:
             self._replace_child_of_parent(child, None)
 
@@ -349,31 +418,3 @@ class RedBlackTree(object):
             else:
                 node.sibling.lch.is_red = False
                 self._rotate_right(node.parent)
-
-    def remove(self, key):
-        target_node = self._find(key)  # find the target node
-
-        # In the case where the target node does not have the same key,
-        # copy the node to cover the node to delete.
-        node = target_node
-        while node is not None and node.key != key:
-            node = node.parent
-        if node is None:  # the key can not be found in the tree
-            return
-        node.key, node.value = target_node.key, target_node.value  # copy over
-        self._delete(target_node)
-
-    def first(self):
-        if self.root is None:
-            return None
-        node = self.root
-        while node.lch is not None:
-            node = node.lch
-        return node.key, node.value
-
-    def pop(self):
-        first_node = self.first()
-        if first_node is None:
-            return None
-        self.remove(first_node[0])
-        return first_node
