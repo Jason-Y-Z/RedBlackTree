@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "red_black_tree"
+version = "0.0.1"
+authors = [
+  { name="JasonYZ", email="jasonzhang2013@outlook.com" },
+]
+description = "A simple red-black tree"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Jason-Y-Z/RedBlackTree"
+"Bug Tracker" = "https://github.com/Jason-Y-Z/RedBlackTree/issues"
